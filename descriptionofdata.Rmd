@@ -1,0 +1,243 @@
+---
+title: "Data Visualization Project -- Parts A and B"
+author: "Yijie Shao, Marc Bachs, Maria Pascual"
+date: "Spring Semester 2026"
+output:
+  prettydoc::html_pretty:
+    theme: cayman 
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 6, fig.height = 4, fig.align='center')
+# install.packages("prettydoc")
+```
+
+```{=html}
+<style>
+  @import url(https://fonts.googleapis.com/css?family=Fira+Sans:300,300i,400,400i,500,500i,700,700i);s
+  @import url(https://cdn.rawgit.com/tonsky/FiraCode/1.204/distr/fira_code.css);
+  @import url("https://use.fontawesome.com/releases/v5.10.1/css/all.css");
+  
+  body {
+    font-family: 'Fira Sans','Droid Serif', 'Palatino Linotype', 'Book Antiqua', Palatino, 'Microsoft YaHei', 'Songti SC', serif;
+  }
+  
+
+</style>
+```
+
+
+### Where and why was the information collected?
+
+Our dataset comes from an article called “Great ape genetic diversity and population history”, by, among others, two of our former teachers, Ferran Casals and Hafid Laayouni. The study consists in the sequencing of 88 individuals (79 non-human) from six great ape species, the identification of Single Nucleotide Polymorphisms (SNPs) and the support for the theory that there exist genetically distinct populations within each species.
+
+Both table S1 and S3 were interesting, one because it offered the information about the samples, so it was useful to check if there were biases or patterns, and the other because it contains the actual genetic variation information, which is relevant in the study.
+
+Ultimately, we selected table 1 from the Supplementary Information, which consists in the details of the sequencing performed for each of the 88 individuals. It is a summary of all the samples in which we can extract data in regard to the coverage, the sequencing technique, the geographical origin and sex of each individual. This provides insight into the study design, and also it’s useful to check for the distinct populations.
+
+### Which is the meaning of each variable? Do the variables have units? Which one?
+
+1.  Species (categorical): Species formal name, used to stratify the individuals. By the first wword, we can also classify individuals by their species. There’s no units.
+
+2.  Common name (categorical): Species common name, used to stratify the individuals. There’s no units.
+
+3.  Name (categorical): Name of the individual, providing uniqueness. There’s no units
+
+4.  Studbook ID (categorical): ID for each individual, providing uniqueness. However, it is redundant and we will use the names. There’s no units
+
+5.  ID2 (categorical): Alternative ID for each individual, providing uniqueness. However, it is redundant and we will use the names. There’s no units
+
+6.  Sex (categorical): Born-sex of each individual, allows values M and F. It is useful to check differences between males and females. There’s no units.
+
+7.  Source (categorical): Source of sample for genome sequencing. Can either be from the blood, liver, spleen… It might be interesting to check the effectiveness of each method. There’s no units.
+
+8.  Geographic origin (categorical): Region of origin of non-human primates. There’s no units.
+
+9.  Birth origin (categorical): The birth situation of each individual, allows values Wild born and Captive born. There’s no units.
+
+10. Sequencing Center (categorical): Place where the sequencing of each sample took place. There’s no units.
+
+11. Read Length (continuous): number of nucleotide bases sequenced from a DNA fragment in a single sequencing run. It typically ranges from 20-500 bp if it's a short-read to over 100 kb if it's a long-read. For that, the units are base-pairs of nucleotides (bp).
+
+12. Sequenced Coverage (continuous) Sequence coverage (or depth) is the average number of unique sequencing reads that align to a specific base or region in a reference genome. The units are fold coverage to a mean of 25-fold coverage per individual.
+
+13. Sequenced Coverage PE (continuous) Sequencing coverage (or depth) in paired-end (PE) indicates the average number of times each base in a target region is covered by sequencing reads, but those reads are bidirectional. The units are fold coverage to a mean of 25-fold coverage per individual.
+
+14. Sequenced Gbp (continuous) Sequenced Gigabase pairs. This is the total volume of DNA sequence data generated. The units are Gigabase pairs (10\^9 base pairs.)
+
+15. \*Comments: It is not a variable, but rather additional information about each of the individuals. Something interesting is that they might give information about the lineage of individuals within the same dataset.
+
+### Does the data set have a long format?
+
+No, the data is not in long format. We have many different variables for each single individual. For some things, long format won't be much useful, so we will keep the original wide format data to use it in some plots. However, we've created a 'long' format data stratifying by our continuous variables, read_length, sequenced_coverage, sequenced_coverage_pe and sequenced_gbp using pivot_longer.
+
+```{r import data, include=FALSE}
+library(janitor)
+library(readxl)
+library(tidyr)
+
+temp <- tempfile(fileext = ".xlsx")
+
+download.file(
+  "https://static-content.springer.com/esm/art%3A10.1038%2Fnature12228/MediaObjects/41586_2013_BFnature12228_MOESM7_ESM.xlsx",
+  temp,
+  mode = "wb"
+)
+
+data <- read_excel(temp, sheet = "Table S1")
+data <- clean_names(data)
+data$species <- as.factor(data$species)
+data$common_name <- as.factor(data$common_name)
+
+#There's one case in which the sex is M*, as it's unsure. We have to take this into account
+data$sex[data$sex == "M*"] <- "M"
+data$sex <- as.factor(data$sex)
+
+data$source <- as.factor(data$source)
+data$geographic_origin <- as.factor(data$geographic_origin)
+data$birth_origin <- as.factor(data$birth_origin)
+data$sequencing_center <- as.factor(data$sequencing_center)
+
+data$read_length <- as.numeric(data$read_length)
+data$sequenced_coverage <- as.numeric(data$sequenced_coverage)
+data$sequenced_coverage_pe <- as.numeric(data$sequenced_coverage_pe)
+data$sequenced_gbp <- as.numeric(data$sequenced_gbp)
+
+
+long_data <- pivot_longer(
+  data,
+  cols = c(read_length, sequenced_coverage, sequenced_coverage_pe, sequenced_gbp),
+  names_to = "variable",
+  # values_to = "value"
+)
+
+data <- head(data, -2)
+long_data <- head(long_data, -4)
+#last row is incorrect
+```
+
+## Exploration of the data
+
+The first thing we will do is do a general exploration of the dataset. We are interested in seeing the distribution of our continuous variables.
+
+```{r, echo=FALSE}
+
+library(ggplot2)
+
+ggplot(long_data, aes(x = value, fill = variable)) +
+  geom_histogram(bins = 30, na.rm = TRUE) +
+  facet_wrap(variable ~ ., scales = "free") +
+  scale_fill_discrete(name = "Sequencing measurement", labels = c("Read length", "Sequenced coverage", "Sequenced coverage PE", "Sequenced GBP")) +
+  labs(x = "Distribution of each measurement", y = "", title = "Distribution of the different sequencing measurements") +
+  theme_minimal()
+
+```
+
+Several observations can be obtained from this histograms. First, that read length is either around 100 or around 50. In fact, there's only three possible values, 51, 100 or 101, so it could be treated as a factor. Then we can see that the other three seem to follow almost the same distribution. Though we can't assume it yet, we might argue that they are strictly correlated.
+
+For categorical variables, we can observe the data in many different ways. To choose just one, we will see the number of individuals per species and also fill in the sex of each individual to see if they are evenly divided.
+
+```{r, echo=FALSE}
+
+
+ggplot(data, aes(x= species, fill = sex)) +
+  geom_bar() +
+  labs(x = "Species", y = "Number of individuals", title = "Number of individuals per species") +
+  scale_fill_discrete(name = "Sex") +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5)) +
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+      
+```
+
+This data exploration gives a quite significant insight, showing that species are not equally represented. We were interested in further investigating what was the context of this situation and we designed our hypothesis and explanation of the data accordingly.
+
+## Explanation of the data
+
+### Hypothesis
+
+Since our table S1 contains sequencing metadata, we can formulate a hypothesis related to the strategy of the researchers in regard to sampling and species representation. And so, **our hypothesis will be that there are some species that have a higher sequencing quality**. This can be shown as there are species that are sequenced more than others (Figure 1), they also have an overall higher coverage (Figure 2) and this higher coverage and overepresentation are strongly correlated (Figure 3).
+
+### Figure 1
+
+The first question we ask ourselves is if there’s some species that are sampled more heavily. The simplest way to assess this is to **check the number of individuals in each species that were selected for the sample**. We’ve decided to separate them by genus, as this groups the species very neatly and in a way that has biological relevance. This way we will be able to see if the differences are significant between or within the genus.
+
+```{r, echo=FALSE}
+
+genres <- stringr::word(data$species, 1)
+
+ggplot(data, aes(x= genres, fill = species)) +
+  geom_bar() +
+  labs(x = "Genres", y = "Number of individuals", title = "Number of individuals per genre/species") +
+  scale_fill_discrete(name = "Species") +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5)) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())
+
+  
+```
+
+The results show that some genus are more sequenced than others, and also that inside the genus there’s species that are more represented. Our hypothesis still makes sense under this context, as it proves the **sampling wasn’t stratified by species nor genus and that marks a difference in the starting point for sequencing quality**.
+
+### Figure 2
+
+The second question is whether there’s a significant difference between the sequencing coverage of each species. **A higher sequencing coverage usually means a better coverage**. That is because each unit increased means a base pair was sequenced an extra time. Also **if the sequencing coverage PE value is close to sequencing coverage means that most of the reading of base pairs was paired-end. That usually means a better alignment**. We have to check then if sequencing_coverage is much higher than sequencing_coverage_PE, as that is also a landmark for good sequencing quality. Note: The idea was instead of doing two plots do a facet_grid or facet_wrap, but the significance value was not correctly written.
+
+```{r, echo=FALSE}
+
+library(ggsignif)
+
+long_data2 <- long_data[long_data$variable == "sequenced_coverage", ]
+long_data3 <- long_data[long_data$variable == "sequenced_coverage_pe", ]
+
+ggplot(long_data2, aes(x = species, y = value, fill = species)) +
+  geom_boxplot() +
+  labs(x = "Species", y = "Sequenced coverage", title = "Sequenced coverage per species") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  geom_signif(comparisons = list(c("Gorilla gorilla gorilla", "Homo sapiens")), map_signif_level=FALSE, y_position = 42)
+
+
+ggplot(long_data3, aes(x = species, y = value, fill = species)) +
+  geom_boxplot() +
+  labs(x = "Species", y = "Sequenced coverage PE", title = "Sequenced coverage PE per species") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  geom_signif(comparisons = list(c("Gorilla gorilla gorilla", "Homo sapiens")), map_signif_level=FALSE, y_position = 42)
+
+
+```
+
+With this figure we can see that **there's a significant difference between each species in sequenced coverage.** We took for example *Gorilla gorilla gorilla* which was very highly represented in number of individuals and compared it with *Homo sapiens*, that wasn't as much. We can see that both the difference in sequenced coverage and paired-end sequenced coverage are significant for a threshold of 0.5. We can also see that most species have a similar distribution in both measurements, but some like *Gorilla beringei graueri* and *Pan paniscus* maybe are not. This is also contrasts differences.
+
+### Figure 3
+
+And finally we want to see whether there’s a good relationship between the total coverage and the sequencing output. Even though we first checked the number of individuals in each species to see the representation of each, we must assess that **each individual had a different total read length**, so a total number of gigabase pairs that was sequenced. **But does a higher read mean the sequencing coverage was better?** We can try and see if both variables follow a linear relationship. **If they do, it would mean that sequencing more means sequencing better.** It would also relate to the previous plots and prove that the different number of individuals by species is a significant difference in sequencing quality and also that the difference in sequencing coverage came from a difference in the experiment design.
+
+```{r, echo=FALSE}
+
+library(ggplot2)
+
+ggplot(data, aes(x = sequenced_gbp, y = sequenced_coverage, color = species)) +
+  geom_point(size = 3, alpha = 0.7) +                  # points, colored by species
+  labs(
+    x = "Total Sequenced (Gbp)",
+    y = "Sequencing Coverage",
+    title = "Relationship between Sequencing Output and Coverage",
+    color = "Species"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())
+
+```
+
+Plotting the both variables makes **very obvious that a linear relationship is present**. This is the final proof that there is a big difference in sequencing quality among species, both between them and also within (different individuals from the same species also differ).
+
+### A small note on the results
+
+These plots show that **the experimental design that took place in this study led to a difference in sequencing quality between species, but this is not necessarily bad, it simply addressed the needs of the research team.**
+
+We see that humans (*Homo sapiens*) are overall underrepresented. However, we have access to much more information about the human genome than other primates. It is logical that having more prior knowledge about the species and full genomes already available for comparison makes additional sequencing redundant and unnecessary.
+
+And on the other hand, the species that have higher quality of reads might be of special interest for the researchers: they might be endangered, more closely related evolution-wise, or maybe they had access to more wild-born individuals (let’s remember the aim of the study focuses on natural populations and not captive). For all we know, **this difference might be intentional for some of the mentioned reasons or it might be purely accidental but not affecting the overall resulting study.**
